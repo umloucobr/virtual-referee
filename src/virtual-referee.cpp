@@ -1,7 +1,5 @@
-﻿#include "virtual-referee.h"
-#include <opencv2/core.hpp>
+﻿#include <opencv2/opencv.hpp>
 
-int main()
-{
+int main(int argc, char** argv) {
 	
 }
