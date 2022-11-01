@@ -3,3 +3,9 @@ The Virtual Referee assistant (VRA for short) is a tool inspired by the HawkEye 
 
 # Currently Focus
 VRA is currently focusing on Association Football and it's variants.
+
+# TODO
+* Video Buffer
+* GUI
+* Let user choose line to track
+* Documentation

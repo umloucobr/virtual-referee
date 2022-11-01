@@ -5,7 +5,7 @@ int main(int argc, char* argv[]) {
 	cv::namedWindow("Line Detector 2", cv::WINDOW_AUTOSIZE);
 
 	cv::VideoCapture video;
-	video.open("c.mp4");
+	video.open(argv[1]);
 
 	cv::Mat vid1;
 	cv::Mat vid2;
