@@ -1,22 +1,54 @@
 ﻿#include "virtual-referee.h"
 
 int main(int argc, char* argv[]) {
+	bool useCircles {false};
+	bool useFindContours {false};
+	cv::String path{};
+
+	if (argc > 1)
+	{
+		const cv::String keys{
+			"{help h usage ? |      | Print this message  }"
+			"{@path			 |      | Path of the video/camera   }"
+			"{ci circle		 |      | Use HoughCircles to find circles (expensive)      }" 
+			"{co contours	 |      | Use FindContour to find contours    }" };
+
+		cv::CommandLineParser parser(argc, argv, keys);
+		parser.about("Virtual Referee V0.8");
+		path = parser.get<cv::String>(0);
+
+		if (parser.has("ci"))
+		{
+			useCircles = true;
+		}
+		else if (parser.has("co"))
+		{
+			useFindContours = true;
+		}
+	}
+
 	cv::namedWindow("Line Detector", cv::WINDOW_AUTOSIZE);
 	cv::namedWindow("Line Detector 2", cv::WINDOW_AUTOSIZE);
 
 	cv::VideoCapture video;
-	video.open(argv[1]);
+	video.open(path);
 
-	cv::Mat vid1;
-	cv::Mat vid2;
+	if (!video.isOpened())
+	{
+		std::cerr << "Couldn't open video";
+		return -1;
+	}
+
+	cv::Mat vid1; //First frame.
+	cv::Mat vid2;	//Frame with gaussian blur.
 	cv::Mat vid2Gray;
 	cv::Mat vid2Canny;
 	cv::Mat pMOG2Mask;
 	cv::Ptr<cv::BackgroundSubtractor> pMOG2 = cv::createBackgroundSubtractorMOG2(500, 16.0, false);
-	std::vector<cv::Vec2f> lines;
-	std::vector<cv::Vec3f> circles;
-	//std::vector<std::vector<cv::Point>> contours;
-	//std::vector<cv::Vec4i> hierarchy;
+	std::vector<cv::Vec2f> lines;	//Find lines.
+	std::vector<cv::Vec3f> circles;	//Find circles.
+	std::vector<std::vector<cv::Point>> contours;	//Find contours.
+	std::vector<cv::Vec4i> hierarchy;
 	bool pause {false};
 
 	while (!pause)
@@ -33,24 +65,39 @@ int main(int argc, char* argv[]) {
 		cv::Canny(vid2Gray, vid2Canny, 50, 200, 3, true);
 		cv::HoughLines(vid2Canny, lines, 1, CV_PI / 180, 200, 0, 0);
 
+		//Apply background subtractor.
 		pMOG2->apply(vid2, pMOG2Mask);
 
-		/*
-		cv::dilate(pMOG2Mask, pMOG2Mask, 1);
-		cv::HoughCircles(pMOG2Mask, circles, cv::HOUGH_GRADIENT, 1.5, 400, 100.0, 100.0, 80, 250);
+		if (useCircles)
+		{
+			cv::HoughCircles(pMOG2Mask, circles, cv::HOUGH_GRADIENT, 1.5, 400, 100.0, 100.0, 80, 250);
 
-		for (size_t i = 0; i < circles.size(); ++i) {
-			cv::circle(
-				vid2,
-				cv::Point(cvRound(circles[i][0]), cvRound(circles[i][1])),
-				cvRound(circles[i][2]),
-				cv::Scalar(0, 0, 255),
-				2
-			);
-		}*/
+			for (size_t i = 0; i < circles.size(); ++i) {
+				cv::circle(
+					vid2,
+					cv::Point(cvRound(circles[i][0]), cvRound(circles[i][1])),
+					cvRound(circles[i][2]),
+					cv::Scalar(0, 0, 255),
+					2
+				);
+			}
+		}
+
+		if (useFindContours)
+		{
+			findContours(pMOG2Mask, contours, hierarchy, cv::RETR_TREE, cv::CHAIN_APPROX_SIMPLE);
+
+			cv::Mat drawing = cv::Mat::zeros(pMOG2Mask.size(), CV_8UC3);
+			for (size_t i = 0; i < contours.size(); i++)
+			{
+				cv::Scalar color = cv::Scalar(10, 10, 10);
+				drawContours(vid2, contours, static_cast<int>(i), color, 2, cv::LINE_8, hierarchy, 0);
+			}
+		}
 
 		cv::cvtColor(pMOG2Mask, pMOG2Mask, cv::COLOR_GRAY2BGR);
 
+		//Draw HoughLines() to both images.
 		for (int i = 0; i < lines.size(); i++)
 		{
 			float rho = lines[i][0];
@@ -73,17 +120,11 @@ int main(int argc, char* argv[]) {
 			cv::line(pMOG2Mask, pt1, pt2, cv::Scalar(0, 0, 255), 3, cv::LINE_AA);
 		}
 
-		/*findContours(pMOG2Mask, contours, hierarchy, cv::RETR_TREE, cv::CHAIN_APPROX_SIMPLE);
-		cv::Mat drawing = cv::Mat::zeros(pMOG2Mask.size(), CV_8UC3);
-		for (size_t i = 0; i < contours.size(); i++)
-		{
-			cv::Scalar color = cv::Scalar(10, 10, 10);
-			drawContours(vid2, contours, static_cast<int>(i), color, 2, cv::LINE_8, hierarchy, 0);
-		}*/
-
 		cv::imshow("Line Detector", pMOG2Mask);
 		cv::imshow("Line Detector 2", vid2);
 
+		//ASCII 112 = "p"
+		//ASCII 27 = "ESC".
 		int ascii {static_cast<int>(cv::waitKey(33))};
 		if (ascii == 112)
 		{
