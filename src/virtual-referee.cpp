@@ -3,27 +3,34 @@
 int main(int argc, char* argv[]) {
 	bool useCircles {false};
 	bool useFindContours {false};
-	cv::String path{};
+	cv::String pathToVideo{};
 
 	if (argc > 1)
 	{
 		const cv::String keys{
-			"{help h usage ? |      | Print this message  }"
-			"{@path			 |      | Path of the video/camera   }"
-			"{ci circle		 |      | Use HoughCircles to find circles (expensive)      }" 
-			"{co contours	 |      | Use FindContour to find contours    }" };
+			"{help h usage ? |      | Print this message}"
+			"{@path			 |      | Path of the video/camera}"
+			"{ci circle		 |      | Use HoughCircles to find circles (expensive)}" 
+			"{co contours	 |      | Use FindContour to find contours (expensive)}"};
 
 		cv::CommandLineParser parser(argc, argv, keys);
 		parser.about("Virtual Referee V0.8");
-		path = parser.get<cv::String>(0);
+		pathToVideo = parser.get<cv::String>(0);
 
 		if (parser.has("ci"))
 		{
 			useCircles = true;
 		}
-		else if (parser.has("co"))
+
+		if (parser.has("co"))
 		{
 			useFindContours = true;
+		}
+
+		if (parser.has("help"))
+		{
+			parser.printMessage();
+			return 0;
 		}
 	}
 
@@ -31,11 +38,11 @@ int main(int argc, char* argv[]) {
 	cv::namedWindow("Line Detector 2", cv::WINDOW_AUTOSIZE);
 
 	cv::VideoCapture video;
-	video.open(path);
+	video.open("IMG_7794.mp4");
 
 	if (!video.isOpened())
 	{
-		std::cerr << "Couldn't open video";
+		std::cerr << "Could not open video";
 		return -1;
 	}
 
@@ -48,7 +55,7 @@ int main(int argc, char* argv[]) {
 	std::vector<cv::Vec2f> lines;	//Find lines.
 	std::vector<cv::Vec3f> circles;	//Find circles.
 	std::vector<std::vector<cv::Point>> contours;	//Find contours.
-	std::vector<cv::Vec4i> hierarchy;
+	std::vector<cv::Vec4i> hierarchy;				//Find contours.
 	bool pause {false};
 
 	while (!pause)
@@ -70,7 +77,7 @@ int main(int argc, char* argv[]) {
 
 		if (useCircles)
 		{
-			cv::HoughCircles(pMOG2Mask, circles, cv::HOUGH_GRADIENT, 1.5, 400, 100.0, 100.0, 80, 250);
+			cv::HoughCircles(vid2Gray, circles, cv::HOUGH_GRADIENT, 1.5, 400, 100.0, 100.0, 80, 250);
 
 			for (size_t i = 0; i < circles.size(); ++i) {
 				cv::circle(
@@ -95,6 +102,7 @@ int main(int argc, char* argv[]) {
 			}
 		}
 
+		//Convert back to color to draw a colored line with the data that HoughLine() produced.
 		cv::cvtColor(pMOG2Mask, pMOG2Mask, cv::COLOR_GRAY2BGR);
 
 		//Draw HoughLines() to both images.

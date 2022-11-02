@@ -9,3 +9,4 @@ VRA is currently focusing on Association Football and it's variants.
 * GUI
 * Let user choose line to track
 * Documentation
+* Trackbar
