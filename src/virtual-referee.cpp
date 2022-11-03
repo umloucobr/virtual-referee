@@ -1,6 +1,25 @@
 ﻿#include "virtual-referee.h"
 
+//Fixed size queue.
+namespace vr {
+	template <typename T, int MaxLen, typename Container = std::deque<T>>
+	class FixedQueue : public std::queue<T, Container> {
+	public:
+		void push(const T& value) {
+			if (this->size() == MaxLen) {
+				this->c.pop_front();
+			}
+			std::queue<T, Container>::push(value);
+		}
+	};
+}
+
+void writeOnDisk(cv::VideoWriter video, std::vector<std::string> buffer, int size) {
+
+}
+
 int main(int argc, char* argv[]) {
+	int fps{30};
 	bool useCircles {false};
 	bool useFindContours {false};
 	cv::String pathToVideo{};
@@ -9,13 +28,21 @@ int main(int argc, char* argv[]) {
 	{
 		const cv::String keys{
 			"{help h usage ? |      | Print this message}"
-			"{@path			 |      | Path of the video/camera}"
+			"{@path			 |<none>| Path of the video/camera}"
 			"{ci circle		 |      | Use HoughCircles to find circles (expensive)}" 
-			"{co contours	 |      | Use FindContour to find contours (expensive)}"};
+			"{co contours	 |      | Use FindContour to find contours (expensive)}"
+			"{fps			 |  30  | FPS rate of video}" };
 
 		cv::CommandLineParser parser(argc, argv, keys);
 		parser.about("Virtual Referee V0.8");
 		pathToVideo = parser.get<cv::String>(0);
+		fps = parser.get<int>("fps");
+
+		if (parser.has("help"))
+		{
+			parser.printMessage();
+			return 0;
+		}
 
 		if (parser.has("ci"))
 		{
@@ -27,10 +54,13 @@ int main(int argc, char* argv[]) {
 			useFindContours = true;
 		}
 
-		if (parser.has("help"))
+		if (parser.has("fps"))
 		{
-			parser.printMessage();
-			return 0;
+			if (fps != 30 && fps != 60)
+			{
+				std::cerr << "FPS should be 30 or 60\n";
+				return -1;
+			}
 		}
 	}
 
@@ -38,7 +68,15 @@ int main(int argc, char* argv[]) {
 	cv::namedWindow("Line Detector 2", cv::WINDOW_AUTOSIZE);
 
 	cv::VideoCapture video;
-	video.open("IMG_7794.mp4");
+	video.open(pathToVideo);
+
+	cv::Size size(
+		static_cast<int>(video.get(cv::CAP_PROP_FRAME_WIDTH)),
+		static_cast<int>(video.get(cv::CAP_PROP_FRAME_HEIGHT))
+	);
+
+	cv::VideoWriter writer;
+	writer.open("last30seconds.mp4", cv::VideoWriter::fourcc('m', 'p', '4', 'v'), fps, size, true);
 
 	if (!video.isOpened())
 	{
@@ -56,15 +94,23 @@ int main(int argc, char* argv[]) {
 	std::vector<cv::Vec3f> circles;	//Find circles.
 	std::vector<std::vector<cv::Point>> contours;	//Find contours.
 	std::vector<cv::Vec4i> hierarchy;				//Find contours.
-	bool pause {false};
 
-	while (!pause)
+	//Video buffer that gets last 30 seconds of video. It has 900 frames for 30 FPS and 1800 for 60 FPS.
+	int currentFrame{ 0 };
+	std::string videoBufferFolder{"videobuffer/vb"};
+	vr::FixedQueue<std::string, 20>imagePath;
+
+	while (true)
 	{
 		video >> vid1;
 		if (vid1.empty())
 		{
 			return -1;
 		}
+
+		++currentFrame;
+
+		std::string videoBufferPath{ videoBufferFolder + std::to_string(currentFrame) + ".jpg" };
 
 		cv::GaussianBlur(vid1, vid2, cv::Size(5, 5), 5, 5);
 		cv::cvtColor(vid2, vid2Gray, cv::COLOR_BGR2GRAY);
@@ -131,6 +177,25 @@ int main(int argc, char* argv[]) {
 		cv::imshow("Line Detector", pMOG2Mask);
 		cv::imshow("Line Detector 2", vid2);
 
+		//Save image to buffer.
+		if (fps == 30)
+		{
+			if (currentFrame == 20)
+			{
+				currentFrame = 0;
+			}
+			imagePath.push(videoBufferPath);
+			cv::imwrite(videoBufferPath, vid2);
+		}
+		else if (fps == 60)
+		{
+			cv::imwrite(videoBufferPath, vid2);
+			if (currentFrame == 20)
+			{
+				return 0;
+			}
+		}
+
 		//ASCII 112 = "p"
 		//ASCII 27 = "ESC".
 		int ascii {static_cast<int>(cv::waitKey(33))};
@@ -144,8 +209,10 @@ int main(int argc, char* argv[]) {
 		else if (ascii == 27)
 		{
 			cv::destroyAllWindows();
+			std::cout << currentFrame << '\n';
 			return 0;
 		}
 	}
+	video.release();
 	return 0;
 }
