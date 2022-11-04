@@ -14,15 +14,34 @@ namespace vr {
 	};
 }
 
-void writeOnDisk(cv::VideoWriter video, std::vector<std::string> buffer, int size) {
-
+void writeOnDisk(vr::FixedQueue<std::string, 120>& buffer, int fps, const cv::Size& size, bool& alreadySaved) {
+	std::string path{};
+	if (alreadySaved)
+	{
+		path = "lastseconds2.mp4";
+	}
+	else
+	{
+		path = "lastseconds1.mp4";
+		alreadySaved = true;
+	}
+	
+	cv::VideoWriter writer;
+	writer.open(path, cv::VideoWriter::fourcc('m', 'p', '4', 'v'), fps, size, true);
+	
+	while (!buffer.empty())
+	{
+		cv::Mat bufferFrame(cv::imread(buffer.front()));
+		writer.write(bufferFrame);
+		buffer.pop();
+	}
 }
 
 int main(int argc, char* argv[]) {
-	int fps{30};
+	int fps {30};
 	bool useCircles {false};
 	bool useFindContours {false};
-	cv::String pathToVideo{};
+	cv::String pathToVideo {};
 
 	if (argc > 1)
 	{
@@ -30,13 +49,12 @@ int main(int argc, char* argv[]) {
 			"{help h usage ? |      | Print this message}"
 			"{@path			 |<none>| Path of the video/camera}"
 			"{ci circle		 |      | Use HoughCircles to find circles (expensive)}" 
-			"{co contours	 |      | Use FindContour to find contours (expensive)}"
-			"{fps			 |  30  | FPS rate of video}" };
+			"{co contours	 |      | Use FindContour to find contours (expensive)}"};
 
 		cv::CommandLineParser parser(argc, argv, keys);
 		parser.about("Virtual Referee V0.8");
+
 		pathToVideo = parser.get<cv::String>(0);
-		fps = parser.get<int>("fps");
 
 		if (parser.has("help"))
 		{
@@ -53,15 +71,6 @@ int main(int argc, char* argv[]) {
 		{
 			useFindContours = true;
 		}
-
-		if (parser.has("fps"))
-		{
-			if (fps != 30 && fps != 60)
-			{
-				std::cerr << "FPS should be 30 or 60\n";
-				return -1;
-			}
-		}
 	}
 
 	cv::namedWindow("Line Detector", cv::WINDOW_AUTOSIZE);
@@ -74,9 +83,6 @@ int main(int argc, char* argv[]) {
 		static_cast<int>(video.get(cv::CAP_PROP_FRAME_WIDTH)),
 		static_cast<int>(video.get(cv::CAP_PROP_FRAME_HEIGHT))
 	);
-
-	cv::VideoWriter writer;
-	writer.open("last30seconds.mp4", cv::VideoWriter::fourcc('m', 'p', '4', 'v'), fps, size, true);
 
 	if (!video.isOpened())
 	{
@@ -95,10 +101,13 @@ int main(int argc, char* argv[]) {
 	std::vector<std::vector<cv::Point>> contours;	//Find contours.
 	std::vector<cv::Vec4i> hierarchy;				//Find contours.
 
-	//Video buffer that gets last 30 seconds of video. It has 900 frames for 30 FPS and 1800 for 60 FPS.
-	int currentFrame{ 0 };
-	std::string videoBufferFolder{"videobuffer/vb"};
-	vr::FixedQueue<std::string, 20>imagePath;
+	//Video buffer that gets last seconds of video. It has 900 frames for 30 FPS and 1800 for 60 FPS (because the maximum is 30 seconds).
+	int currentFrame {0};
+	bool alreadySaved {false}; //This bool determines if it is the first or second video buffer.
+	std::string videoBufferFolderHo {"videobuffer/hl/vb"}; //Video buffer for frame vid2.
+	std::string videoBufferFolderBa {"videobuffer/ba/vb"}; //Video buffer for frame Background Subtractor.
+	vr::FixedQueue<std::string, 120>imagePathHo;
+	vr::FixedQueue<std::string, 120>imagePathBa;
 
 	while (true)
 	{
@@ -110,7 +119,8 @@ int main(int argc, char* argv[]) {
 
 		++currentFrame;
 
-		std::string videoBufferPath{ videoBufferFolder + std::to_string(currentFrame) + ".jpg" };
+		std::string videoBufferPathHo{ videoBufferFolderHo + std::to_string(currentFrame) + ".jpg" };
+		std::string videoBufferPathBa{ videoBufferFolderBa + std::to_string(currentFrame) + ".jpg" };
 
 		cv::GaussianBlur(vid1, vid2, cv::Size(5, 5), 5, 5);
 		cv::cvtColor(vid2, vid2Gray, cv::COLOR_BGR2GRAY);
@@ -177,28 +187,20 @@ int main(int argc, char* argv[]) {
 		cv::imshow("Line Detector", pMOG2Mask);
 		cv::imshow("Line Detector 2", vid2);
 
-		//Save image to buffer.
-		if (fps == 30)
+		if (currentFrame == 120)
 		{
-			if (currentFrame == 20)
-			{
-				currentFrame = 0;
-			}
-			imagePath.push(videoBufferPath);
-			cv::imwrite(videoBufferPath, vid2);
+			currentFrame = 0;
 		}
-		else if (fps == 60)
-		{
-			cv::imwrite(videoBufferPath, vid2);
-			if (currentFrame == 20)
-			{
-				return 0;
-			}
-		}
+		imagePathHo.push(videoBufferPathHo);
+		cv::imwrite(videoBufferPathHo, vid2);
+
+		imagePathBa.push(videoBufferPathBa);
+		cv::imwrite(videoBufferPathBa, pMOG2Mask);
 
 		//ASCII 112 = "p"
+		//ASCII 114 = "r"
 		//ASCII 27 = "ESC".
-		int ascii {static_cast<int>(cv::waitKey(33))};
+		int ascii {static_cast<int>(cv::waitKey(1))};
 		if (ascii == 112)
 		{
 			while (cv::waitKey(0) != 112)
@@ -206,10 +208,14 @@ int main(int argc, char* argv[]) {
 				cv::waitKey(0);
 			}
 		}
+		else if (ascii == 114)
+		{
+			writeOnDisk(imagePathHo, fps, size, alreadySaved);
+			writeOnDisk(imagePathBa, fps, size, alreadySaved);
+		}
 		else if (ascii == 27)
 		{
 			cv::destroyAllWindows();
-			std::cout << currentFrame << '\n';
 			return 0;
 		}
 	}
