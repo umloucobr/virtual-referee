@@ -2,6 +2,9 @@
 
 //Fixed size queue.
 namespace vr {
+	//Multithreading.
+	int threadCount {0};
+
 	template <typename T, int MaxLen, typename Container = std::deque<T>>
 	class FixedQueue : public std::queue<T, Container> {
 	public:
@@ -35,6 +38,7 @@ void writeOnDisk(vr::FixedQueue<std::string, 120>& buffer, int fps, const cv::Si
 		writer.write(bufferFrame);
 		buffer.pop();
 	}
+	vr::threadCount -= 1;
 }
 
 int main(int argc, char* argv[]) {
@@ -210,8 +214,20 @@ int main(int argc, char* argv[]) {
 		}
 		else if (ascii == 114)
 		{
-			writeOnDisk(imagePathHo, fps, size, alreadySaved);
-			writeOnDisk(imagePathBa, fps, size, alreadySaved);
+			if (vr::threadCount > 1)
+			{
+				std::cerr << "Error! Writing in progress, can't save to buffer." << std::endl;
+				continue;
+			}
+			else
+			{
+				std::cout << "Writing to buffer.\n";
+				vr::threadCount = 2;
+				std::thread bufferT1(writeOnDisk, std::ref(imagePathHo), fps, std::ref(size), std::ref(alreadySaved));
+				std::thread bufferT2(writeOnDisk, std::ref(imagePathBa), fps, std::ref(size), std::ref(alreadySaved));
+				bufferT1.detach();
+				bufferT2.detach();
+			}
 		}
 		else if (ascii == 27)
 		{
