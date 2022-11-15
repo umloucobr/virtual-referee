@@ -1,6 +1,6 @@
 ﻿#pragma once
-#ifndef VIRTUAL_REFEREE_H
-#define VIRTUAL_REFEREE_H
+#ifndef VIRTUAL_REFEREE_HPP
+#define VIRTUAL_REFEREE_HPP
 #include <opencv2/highgui.hpp> //GUI elements.
 #include <opencv2/core/types.hpp> //cv::Mat and cv::Size.
 #include <opencv2/videoio.hpp> //cv::VideoCapture and cv::VideoWriter.
